@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>แอปรายรับ-รายจ่าย (ออนไลน์)</title>
+    <!-- 1. โหลด Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 2. โหลดฟอนต์ Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Sarabun:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <style>
+        /* 3. กำหนดฟอนต์หลัก */
+        body {
+            font-family: 'Sarabun', 'Inter', sans-serif;
+            -webkit-tap-highlight-color: transparent; /* ปิดไฮไลท์ตอนกดบนมือถือ */
+        }
+        /* 4. ซ่อน/แสดง Modal */
+        #transaction-modal.hidden {
+            display: none;
+        }
+        .modal-overlay {
+            transition: opacity 0.3s ease-in-out;
+        }
+        .modal-content {
+            transition: transform 0.3s ease-in-out;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen">
+
+    <!-- =========== Main Content =========== -->
+    <div class="container mx-auto max-w-2xl p-4 pb-24">
+
+        <!-- Header -->
+        <header class="my-6">
+            <h1 class="text-4xl font-bold text-blue-600 text-center">บัญชีของฉัน</h1>
+            <p class="text-center text-gray-500 mt-2">เวอร์ชันออนไลน์ (ใช้ Firebase)</p>
+            
+            <!-- แสดง User ID สำหรับการเชื่อมต่อ -->
+            <div class="bg-white p-3 rounded-lg shadow-sm text-center mt-4">
+                <span class="text-xs text-gray-400">Your User ID:</span>
+                <span id="user-id-display" class="text-sm font-medium text-gray-600 break-all">กำลังโหลด...</span>
+            </div>
+        </header>
+
+        <!-- Summary Cards -->
+        <section class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+            <!-- ยอดคงเหลือ -->
+            <div class="bg-white p-5 rounded-2xl shadow-lg border border-gray-200">
+                <h2 class="text-base font-semibold text-gray-500">ยอดคงเหลือ</h2>
+                <p id="summary-balance" class="text-3xl font-bold text-blue-600 mt-2">0.00</p>
+            </div>
+            <!-- รายรับ -->
+            <div class="bg-white p-5 rounded-2xl shadow-sm border border-gray-200">
+                <h2 class="text-base font-semibold text-green-600">รายรับ</h2>
+                <p id="summary-income" class="text-2xl font-bold text-green-600 mt-2">0.00</p>
+            </div>
+            <!-- รายจ่าย -->
+            <div class="bg-white p-5 rounded-2xl shadow-sm border border-gray-200">
+                <h2 class="text-base font-semibold text-red-600">รายจ่าย</h2>
+                <p id="summary-expense" class="text-2xl font-bold text-red-600 mt-2">0.00</p>
+            </div>
+        </section>
+
+        <!-- Transaction History -->
+        <section>
+            <h2 class="text-xl font-bold text-gray-800 mb-4">ประวัติรายการ</h2>
+            <div id="transaction-list" class="space-y-3">
+                <!-- รายการจะถูกเพิ่มที่นี่โดย JavaScript -->
+                <p id="loading-message" class="text-center text-gray-400 py-10">กำลังโหลดข้อมูล...</p>
+            </div>
+        </section>
+    </div>
+
+    <!-- =========== Add Button (FAB) =========== -->
+    <button id="add-button" class="fixed bottom-6 right-6 bg-blue-600 text-white w-16 h-16 rounded-full shadow-lg flex items-center justify-center transform transition-transform duration-200 active:scale-90">
+        <!-- ไอคอน + (Plus) -->
+        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+    </button>
+
+    <!-- =========== Add/Edit Modal =========== -->
+    <div id="transaction-modal" class="fixed inset-0 z-50 hidden">
+        <!-- Overlay -->
+        <div id="modal-overlay" class="absolute inset-0 bg-black bg-opacity-40 modal-overlay"></div>
+        
+        <!-- Content -->
+        <div class="relative w-full max-w-lg p-4 mx-auto mt-20">
+            <div id="modal-content" class="bg-white rounded-2xl shadow-xl p-6 modal-content">
+                <!-- Modal Header -->
+                <div class="flex justify-between items-center mb-6">
+                    <h3 class="text-2xl font-bold text-gray-800">เพิ่มรายการใหม่</h3>
+                    <button id="close-modal-button" class="text-gray-400 hover:text-gray-600 p-1">
+                        <!-- ไอคอน X (Close) -->
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                    </button>
+                </div>
+
+                <!-- Transaction Type Toggle -->
+                <div class="grid grid-cols-2 gap-2 mb-4">
+                    <button id="modal-type-expense" class="py-3 px-4 rounded-lg font-bold text-lg transition-colors bg-red-500 text-white">
+                        รายจ่าย
+                    </button>
+                    <button id="modal-type-income" class="py-3 px-4 rounded-lg font-bold text-lg transition-colors bg-gray-200 text-gray-500">
+                        รายรับ
+                    </button>
+                </div>
+
+                <!-- Form -->
+                <form id="transaction-form" class="space-y-4">
+                    <div>
+                        <label for="description" class="block text-sm font-medium text-gray-700 mb-1">คำอธิบาย</label>
+                        <input type="text" id="description" placeholder="เช่น ค่ากาแฟ, เงินเดือน" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    </div>
+                    <div>
+                        <label for="amount" class="block text-sm font-medium text-gray-700 mb-1">จำนวนเงิน (บาท)</label>
+                        <input type="number" id="amount" placeholder="0.00" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    </div>
+                    <div>
+                        <label for="category" class="block text-sm font-medium text-gray-700 mb-1">หมวดหมู่</label>
+                        <input type="text" id="category" placeholder="เช่น อาหาร, เงินออม" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    </div>
+                    <button type="submit" class="w-full bg-blue-600 text-white py-3 rounded-lg text-lg font-bold shadow-md hover:bg-blue-700 transition-colors">
+                        บันทึก
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <!-- =========== JavaScript =========== -->
+    <script type="module">
+        // 5. โหลด Firebase SDK
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { 
+            getAuth, 
+            signInAnonymously, 
+            signInWithCustomToken, 
+            onAuthStateChanged 
+        } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { 
+            getFirestore, 
+            collection, 
+            doc, 
+            addDoc, 
+            deleteDoc, 
+            onSnapshot, 
+            query, 
+            Timestamp,
+            setLogLevel
+        } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // --- Config (รับค่าจากสภาพแวดล้อม) ---
+        // ค่าเหล่านี้จะถูกกำหนดให้โดยอัตโนมัติเมื่อรันในสภาพแวดล้อมที่รองรับ
+        const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        // --- Firebase Globals ---
+        let app, db, auth;
+        let userId = null;
+        let unsubscribeFromTransactions = null; // ตัวแปรสำหรับหยุด onSnapshot
+
+        // --- Local State ---
+        let localTransactions = [];
+        let currentModalType = 'expense'; // 'expense' หรือ 'income'
+
+        // --- DOM Elements ---
+        const $ = (selector) => document.querySelector(selector);
+        const modal = $('#transaction-modal');
+        const modalOverlay = $('#modal-overlay');
+        const modalContent = $('#modal-content');
+        const addButton = $('#add-button');
+        const closeModalButton = $('#close-modal-button');
+        const transactionList = $('#transaction-list');
+        const transactionForm = $('#transaction-form');
+        const typeExpenseBtn = $('#modal-type-expense');
+        const typeIncomeBtn = $('#modal-type-income');
+        const descInput = $('#description');
+        const amountInput = $('#amount');
+        const categoryInput = $('#category');
+        const balanceEl = $('#summary-balance');
+        const incomeEl = $('#summary-income');
+        const expenseEl = $('#summary-expense');
+        const loadingMessage = $('#loading-message');
+        const userIdDisplay = $('#user-id-display');
+
+        // --- Functions ---
+
+        /** 1. เริ่มต้นระบบ Authentication */
+        async function initAuth() {
+            if (!firebaseConfig.apiKey) {
+                console.error("Firebase config is missing!");
+                userIdDisplay.textContent = "ตั้งค่า Firebase ไม่ถูกต้อง";
+                loadingMessage.textContent = "ไม่สามารถเชื่อมต่อฐานข้อมูลได้";
+                return;
+            }
+
+            try {
+                app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
+                setLogLevel('Debug'); // แสดง log ของ Firestore
+
+                onAuthStateChanged(auth, (user) => {
+                    if (user) {
+                        userId = user.uid;
+                        userIdDisplay.textContent = userId;
+                        console.log("User is signed in with UID:", userId);
+                        // เมื่อ login สำเร็จ ให้เริ่มดึงข้อมูล
+                        subscribeToTransactions();
+                    } else {
+                        userId = null;
+                        userIdDisplay.textContent = "ไม่ได้เข้าสู่ระบบ";
+                        // ถ้าหลุด ให้หยุดดึงข้อมูล
+                        if (unsubscribeFromTransactions) {
+                            unsubscribeFromTransactions();
+                        }
+                    }
+                });
+
+                // พยายาม Sign in
+                if (initialAuthToken) {
+                    console.log("Signing in with custom token...");
+                    await signInWithCustomToken(auth, initialAuthToken);
+                } else {
+                    console.log("Signing in anonymously...");
+                    await signInAnonymously(auth);
+                }
+
+            } catch (error) {
+                console.error("Error initializing Firebase Auth:", error);
+                userIdDisplay.textContent = "การยืนยันตัวตนล้มเหลว";
+                loadingMessage.textContent = "การยืนยันตัวตนล้มเหลว";
+            }
+        }
+
+        /** 2. ดึงข้อมูลแบบ Real-time */
+        function subscribeToTransactions() {
+            if (!userId) return;
+
+            // ถ้ามีการ subscribe ค้างไว้ ให้ยกเลิกก่อน
+            if (unsubscribeFromTransactions) {
+                unsubscribeFromTransactions();
+            }
+
+            // Path: /artifacts/{appId}/users/{userId}/transactions
+            const collectionPath = `artifacts/${appId}/users/${userId}/transactions`;
+            const q = query(collection(db, collectionPath));
+            
+            console.log(`Subscribing to snapshot at: ${collectionPath}`);
+
+            unsubscribeFromTransactions = onSnapshot(q, (querySnapshot) => {
+                localTransactions = [];
+                querySnapshot.forEach((doc) => {
+                    localTransactions.push({ id: doc.id, ...doc.data() });
+                });
+
+                // เรียงลำดับข้อมูลใน JavaScript (ใหม่สุดไปเก่าสุด)
+                // เราไม่ใช้ orderBy() ของ Firestore เพื่อหลีกเลี่ยงปัญหาเรื่อง Index
+                localTransactions.sort((a, b) => {
+                    const dateA = a.date?.toDate ? a.date.toDate() : new Date(0);
+                    const dateB = b.date?.toDate ? b.date.toDate() : new Date(0);
+                    return dateB - dateA;
+                });
+                
+                console.log("Transactions updated:", localTransactions.length);
+                updateUI();
+
+            }, (error) => {
+                console.error("Error getting transactions snapshot:", error);
+                loadingMessage.textContent = "เกิดข้อผิดพลาดในการดึงข้อมูล";
+            });
+        }
+
+        /** 3. อัปเดต UI ทั้งหมด (รายการ + สรุปยอด) */
+        function updateUI() {
+            renderTransactions();
+            updateSummary();
+        }
+
+        /** 4. แสดงผลรายการ (Transaction List) */
+        function renderTransactions() {
+            transactionList.innerHTML = ''; // ล้างของเก่า
+
+            if (localTransactions.length === 0) {
+                loadingMessage.textContent = "ยังไม่มีรายการ... กดปุ่ม + เพื่อเพิ่ม";
+                transactionList.appendChild(loadingMessage);
+                return;
+            }
+
+            localTransactions.forEach(tx => {
+                const isIncome = tx.type === 'income';
+                const amountColor = isIncome ? 'text-green-600' : 'text-red-600';
+                const sign = isIncome ? '+' : '-';
+                const icon = isIncome ? 
+                    `<svg class="w-6 h-6 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path></svg>` : // ไอคอนบวก (รายรับ)
+                    `<svg class="w-6 h-6 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 12H6"></path></svg>`; // ไอคอนลบ (รายจ่าย)
+                
+                const date = tx.date?.toDate ? tx.date.toDate() : new Date();
+                const formattedDate = date.toLocaleDateString('th-TH', {
+                    day: '2-digit', month: 'short', year: 'numeric'
+                });
+                const formattedCategory = tx.category || 'ทั่วไป';
+
+                const itemHtml = `
+                    <div class="bg-white p-4 rounded-xl shadow-sm flex items-center space-x-3 border border-gray-200">
+                        <div class="p-2 rounded-full ${isIncome ? 'bg-green-100' : 'bg-red-100'}">
+                            ${icon}
+                        </div>
+                        <div class="flex-1">
+                            <p class="font-semibold text-gray-800">${tx.description}</p>
+                            <p class="text-sm text-gray-500">${formattedDate} • ${formattedCategory}</p>
+                        </div>
+                        <div class="text-right">
+                            <p class="font-bold text-lg ${amountColor}">${sign}${tx.amount.toLocaleString(undefined, {minimumFractionDigits: 2})}</p>
+                        </div>
+                        <button class="delete-button text-gray-400 hover:text-red-500 p-2" data-id="${tx.id}">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                        </button>
+                    </div>
+                `;
+                transactionList.insertAdjacentHTML('beforeend', itemHtml);
+            });
+
+            // เพิ่ม Event Listeners ให้ปุ่มลบ
+            document.querySelectorAll('.delete-button').forEach(button => {
+                button.addEventListener('click', handleDeleteTransaction);
+            });
+        }
+
+        /** 5. อัปเดตสรุปยอด (Summary Cards) */
+        function updateSummary() {
+            const totalIncome = localTransactions
+                .filter(tx => tx.type === 'income')
+                .reduce((sum, tx) => sum + tx.amount, 0);
+            
+            const totalExpense = localTransactions
+                .filter(tx => tx.type === 'expense')
+                .reduce((sum, tx) => sum + tx.amount, 0);
+
+            const balance = totalIncome - totalExpense;
+
+            const format = (num) => num.toLocaleString(undefined, {minimumFractionDigits: 2});
+
+            balanceEl.textContent = format(balance);
+            incomeEl.textContent = format(totalIncome);
+            expenseEl.textContent = format(totalExpense);
+            
+            balanceEl.classList.toggle('text-red-600', balance < 0);
+            balanceEl.classList.toggle('text-blue-600', balance >= 0);
+        }
+
+        /** 6. จัดการการเพิ่มรายการ (Form Submit) */
+        async function handleAddTransaction(e) {
+            e.preventDefault();
+            if (!userId) return;
+
+            const description = descInput.value;
+            const amount = parseFloat(amountInput.value);
+            const category = categoryInput.value || 'ทั่วไป';
+
+            if (!description || isNaN(amount) || amount <= 0) {
+                // ใช้ Custom Modal แทน Alert
+                console.warn("ข้อมูลไม่ถูกต้อง");
+                return;
+            }
+
+            try {
+                const newTransaction = {
+                    description: description,
+                    amount: amount,
+                    category: category,
+                    type: currentModalType,
+                    date: Timestamp.now() // ใช้เวลาปัจจุบันจาก Server
+                };
+                
+                const collectionPath = `artifacts/${appId}/users/${userId}/transactions`;
+                const docRef = await addDoc(collection(db, collectionPath), newTransaction);
+                
+                console.log("Transaction added with ID:", docRef.id);
+                hideModal();
+                transactionForm.reset();
+
+            } catch (error) {
+                console.error("Error adding transaction:", error);
+            }
+        }
+
+        /** 7. จัดการการลบรายการ */
+        async function handleDeleteTransaction(e) {
+            if (!userId) return;
+            // ใช้ Custom Modal แทน Confirm
+            const id = e.currentTarget.dataset.id;
+            console.log("Deleting transaction:", id);
+
+            try {
+                const docRef = doc(db, `artifacts/${appId}/users/${userId}/transactions`, id);
+                await deleteDoc(docRef);
+                console.log("Transaction deleted");
+            } catch (error) {
+                console.error("Error deleting transaction:", error);
+            }
+        }
+
+        /** 8. ควบคุม Modal */
+        function showModal() {
+            // ตั้งค่าเริ่มต้นเป็น 'รายจ่าย' ทุกครั้งที่เปิด
+            setModalType('expense');
+            transactionForm.reset();
+            modal.classList.remove('hidden');
+            // Animate
+            modalOverlay.style.opacity = 0;
+            modalContent.style.transform = 'translateY(-20px)';
+            setTimeout(() => {
+                modalOverlay.style.opacity = 1;
+                modalContent.style.transform = 'translateY(0)';
+            }, 10);
+        }
+
+        function hideModal() {
+            modalOverlay.style.opacity = 0;
+            modalContent.style.transform = 'translateY(-20px)';
+            setTimeout(() => {
+                modal.classList.add('hidden');
+            }, 300);
+        }
+
+        function setModalType(type) {
+            currentModalType = type;
+            if (type === 'income') {
+                typeIncomeBtn.className = 'py-3 px-4 rounded-lg font-bold text-lg transition-colors bg-green-500 text-white';
+                typeExpenseBtn.className = 'py-3 px-4 rounded-lg font-bold text-lg transition-colors bg-gray-200 text-gray-500';
+            } else { // expense
+                typeExpenseBtn.className = 'py-3 px-4 rounded-lg font-bold text-lg transition-colors bg-red-500 text-white';
+                typeIncomeBtn.className = 'py-3 px-4 rounded-lg font-bold text-lg transition-colors bg-gray-200 text-gray-500';
+            }
+        }
+
+        // --- Event Listeners ---
+        addButton.addEventListener('click', showModal);
+        closeModalButton.addEventListener('click', hideModal);
+        modalOverlay.addEventListener('click', hideModal);
+        transactionForm.addEventListener('submit', handleAddTransaction);
+        
+        typeExpenseBtn.addEventListener('click', () => setModalType('expense'));
+        typeIncomeBtn.addEventListener('click', () => setModalType('income'));
+
+        // เริ่มต้นการทำงานของแอปเมื่อโหลดเสร็จ
+        document.addEventListener('DOMContentLoaded', initAuth);
+
+    </script>
+</body>
+</html>
